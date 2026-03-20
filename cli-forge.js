@@ -19,7 +19,7 @@ const { spawnSync, execSync } = require("child_process");
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const MODEL        = "claude-sonnet-4-20250514";
+const MODEL        = "claude-sonnet-4-6";
 const MAX_TOKENS   = 8192;
 const MAX_CYCLES   = 5;
 const API_KEY      = process.env.ANTHROPIC_API_KEY;
