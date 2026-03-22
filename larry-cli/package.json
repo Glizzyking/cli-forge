@@ -1,0 +1,10 @@
+{
+  "name": "larry-cli",
+  "version": "1.0.0",
+  "description": "AI-powered TikTok-to-Carousel content engine",
+  "main": "larry.js",
+  "scripts": {
+    "dashboard": "node dashboard.js",
+    "start": "node larry.js"
+  }
+}

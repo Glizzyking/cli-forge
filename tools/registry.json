@@ -1,0 +1,45 @@
+{
+  "meta": {
+    "description": "CLI God — unified tool registry",
+    "updated": "2026-03-21"
+  },
+  "sources": [
+    {
+      "id": "cli-anything",
+      "display_name": "CLI-Anything",
+      "description": "Agent-native stateful CLI interfaces for software, codebases, and web services",
+      "local_path": "./cli-anything",
+      "registry": "./cli-anything/registry.json",
+      "repo": "https://github.com/HKUDS/CLI-Anything",
+      "type": "python-pip"
+    },
+    {
+      "id": "appagent",
+      "display_name": "AppAgent",
+      "description": "LLM-based multimodal agent for operating smartphone applications via GUI automation",
+      "local_path": "./appagent",
+      "repo": "https://github.com/TencentQQGYLab/AppAgent",
+      "type": "python-script",
+      "entry_points": {
+        "learn": "python learn.py",
+        "run":   "python run.py"
+      },
+      "requires": "Python 3.x, pip install -r requirements.txt, Android device/emulator + ADB",
+      "category": "mobile-automation"
+    },
+    {
+      "id": "ios-agent",
+      "display_name": "iOS Agent",
+      "description": "Claude Vision-powered iPhone automation agent — control any iOS app via natural language",
+      "local_path": "./ios-agent",
+      "type": "python-script",
+      "entry_points": {
+        "run":   "node ios-agent-cli.js run",
+        "check": "node ios-agent-cli.js check",
+        "setup": "node ios-agent-cli.js setup"
+      },
+      "requires": "Appium + xcuitest driver, iPhone connected via USB, ANTHROPIC_API_KEY",
+      "category": "mobile-automation"
+    }
+  ]
+}

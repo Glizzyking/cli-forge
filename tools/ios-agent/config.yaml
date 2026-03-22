@@ -1,0 +1,23 @@
+# iOS Agent Configuration
+
+# AI Model — uses Claude vision (no OpenAI needed)
+ANTHROPIC_API_KEY: ""        # leave blank to use .env in project root
+CLAUDE_MODEL: "claude-sonnet-4-6"
+MAX_TOKENS: 1024
+TEMPERATURE: 0.0
+
+# Appium Server
+APPIUM_HOST: "127.0.0.1"
+APPIUM_PORT: 4723
+
+# iOS Device
+DEVICE_NAME: "iPhone"        # e.g. "iPhone 15 Pro"
+PLATFORM_VERSION: "17.0"     # iOS version on your device
+UDID: ""                     # leave blank to auto-detect via pymobiledevice3
+BUNDLE_ID: ""                # app bundle ID to launch (e.g. com.burbn.instagram)
+
+# Agent Behaviour
+MAX_ROUNDS: 20               # max actions per task
+REQUEST_INTERVAL: 3          # seconds between AI calls
+SCREENSHOT_DIR: "./screenshots"
+KNOWLEDGE_DIR: "./knowledge"

@@ -1,0 +1,6 @@
+[submodule "tools/appagent"]
+	path = tools/appagent
+	url = https://github.com/TencentQQGYLab/AppAgent.git
+[submodule "tools/cli-anything"]
+	path = tools/cli-anything
+	url = https://github.com/HKUDS/CLI-Anything.git

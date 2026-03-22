@@ -1,0 +1,6 @@
+pymobiledevice3
+appium-python-client
+Pillow
+requests
+pyyaml
+colorama
