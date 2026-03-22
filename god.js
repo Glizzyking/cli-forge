@@ -35,10 +35,26 @@ if (fs.existsSync(envFile)) {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_KEY  = process.env.ANTHROPIC_API_KEY;
-const API_URL  = "https://api.anthropic.com/v1/messages";
-const MODEL    = "claude-sonnet-4-6";
-const ROOT     = __dirname;
+const API_KEY      = process.env.ANTHROPIC_API_KEY;
+const API_URL      = "https://api.anthropic.com/v1/messages";
+const MODEL        = "claude-sonnet-4-6";
+const ROOT         = __dirname;
+const HISTORY_DIR  = path.join(os.homedir(), ".cli-god");
+const HISTORY_FILE = path.join(HISTORY_DIR, "history.json");
+const SESSION_FILE = path.join(HISTORY_DIR, "last-session.json");
+
+// ─── Token tracking ───────────────────────────────────────────────────────────
+const tokenLog = { input: 0, output: 0 };
+function trackTokens(usage) {
+  if (!usage) return;
+  tokenLog.input  += usage.input_tokens  || 0;
+  tokenLog.output += usage.output_tokens || 0;
+}
+function printTokenSummary() {
+  process.stderr.write(
+    `\n${c.dim}[tokens] input: ${tokenLog.input} | output: ${tokenLog.output}${c.reset}\n`
+  );
+}
 const TOOLS_JS = path.join(ROOT, "tools.js");
 const FORGE_JS = path.join(ROOT, "cli-forge.js");
 const LARRY_JS = path.join(ROOT, "larry-cli", "larry.js");
@@ -433,6 +449,10 @@ async function* streamClaude(messages) {
         }
       } else if (evt.type === "message_delta") {
         stopReason = evt.delta.stop_reason;
+      } else if (evt.type === "message_start") {
+        trackTokens(evt.message?.usage);
+      } else if (evt.type === "message_delta") {
+        trackTokens(evt.usage);
       }
     }
   }
@@ -485,11 +505,52 @@ async function runTurn(messages) {
 
 // ─── REPL ─────────────────────────────────────────────────────────────────────
 
+// ─── History persistence ───────────────────────────────────────────────────────
+
+function loadHistory() {
+  try {
+    if (fs.existsSync(SESSION_FILE)) {
+      const saved = JSON.parse(fs.readFileSync(SESSION_FILE, "utf8"));
+      if (saved && Array.isArray(saved.messages) && saved.messages.length > 0) {
+        const age = Date.now() - (saved.ts || 0);
+        if (age < 4 * 60 * 60 * 1000) { // resume if < 4 hours old
+          log("info", `Resuming session (${saved.messages.length} messages) — type 'new' to start fresh`);
+          return saved.messages;
+        }
+      }
+    }
+  } catch (_) {}
+  return [];
+}
+
+function saveHistory(messages) {
+  try {
+    fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    fs.writeFileSync(SESSION_FILE, JSON.stringify({ ts: Date.now(), messages }, null, 2));
+  } catch (_) {}
+}
+
+function appendToLog(role, content) {
+  try {
+    fs.mkdirSync(HISTORY_DIR, { recursive: true });
+    const entry = JSON.stringify({ ts: new Date().toISOString(), role, content }) + "\n";
+    fs.appendFileSync(HISTORY_FILE, entry);
+  } catch (_) {}
+}
+
 async function repl() {
   if (!API_KEY) die("ANTHROPIC_API_KEY is not set.");
   banner();
 
-  const messages = [];
+  let messages = loadHistory();
+
+  // Ctrl+C — clean exit with token summary
+  process.on("SIGINT", () => {
+    saveHistory(messages);
+    printTokenSummary();
+    process.stderr.write("\n");
+    process.exit(0);
+  });
 
   const rl = readline.createInterface({
     input:  process.stdin,
@@ -502,14 +563,41 @@ async function repl() {
   rl.on("line", async (line) => {
     const input = line.trim();
     if (!input) { rl.prompt(); return; }
-    if (input === "exit" || input === "quit") { process.exit(0); }
+
+    if (input === "exit" || input === "quit") {
+      saveHistory(messages);
+      printTokenSummary();
+      process.exit(0);
+    }
+
+    if (input === "new" || input === "reset") {
+      messages = [];
+      log("info", "Started new session.");
+      rl.prompt();
+      return;
+    }
+
+    if (input === "tokens") {
+      printTokenSummary();
+      rl.prompt();
+      return;
+    }
 
     messages.push({ role: "user", content: input });
+    appendToLog("user", input);
 
     process.stderr.write(`\n${c.magenta}god${c.reset} › `);
 
     try {
       await runTurn(messages);
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === "assistant") {
+        const text = Array.isArray(lastMsg.content)
+          ? lastMsg.content.filter(b => b.type === "text").map(b => b.text).join("")
+          : lastMsg.content;
+        if (text) appendToLog("assistant", text);
+      }
+      saveHistory(messages);
     } catch (e) {
       log("err", e.message);
     }
@@ -517,7 +605,11 @@ async function repl() {
     rl.prompt();
   });
 
-  rl.on("close", () => process.exit(0));
+  rl.on("close", () => {
+    saveHistory(messages);
+    printTokenSummary();
+    process.exit(0);
+  });
 }
 
 // ─── One-shot mode ─────────────────────────────────────────────────────────────

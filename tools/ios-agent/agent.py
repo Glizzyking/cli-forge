@@ -61,7 +61,8 @@ class iOSAgent:
                 decision = analyze_screenshot(screenshot, task, self.history, self.config)
             except Exception as e:
                 print_color(f"[✗] AI error: {e}", "red")
-                break
+                self.controller.disconnect()
+                return False
 
             action    = decision.get("action", "fail")
             obs       = decision.get("observation", "")
@@ -72,6 +73,14 @@ class iOSAgent:
             print_color(f"[action]  {action}", "green")
 
             self.history.append(decision)
+
+            # Stuck loop detection — same observation 3x in a row
+            if len(self.history) >= 3:
+                last3_obs = [h.get("observation", "") for h in self.history[-3:]]
+                if len(set(last3_obs)) == 1 and last3_obs[0]:
+                    print_color("[!] Stuck — same screen 3 rounds. Stopping.", "yellow")
+                    self.controller.disconnect()
+                    return False
 
             # Execute action
             if action == "done":
@@ -86,16 +95,26 @@ class iOSAgent:
                 return False
 
             elif action == "tap":
-                self.controller.tap(decision.get("x", 0), decision.get("y", 0))
+                x, y = decision.get("x"), decision.get("y")
+                if x is None or y is None:
+                    print_color("[!] AI gave tap without coordinates — skipping", "yellow")
+                else:
+                    x, y = max(0, min(int(x), 1290)), max(0, min(int(y), 2796))
+                    self.controller.tap(x, y)
 
             elif action == "swipe":
-                self.controller.swipe(
-                    decision.get("x", 0),  decision.get("y", 0),
-                    decision.get("x2", 0), decision.get("y2", 0),
-                )
+                x,  y  = decision.get("x",  0), decision.get("y",  0)
+                x2, y2 = decision.get("x2", 0), decision.get("y2", 0)
+                x,  y  = max(0, min(int(x),  1290)), max(0, min(int(y),  2796))
+                x2, y2 = max(0, min(int(x2), 1290)), max(0, min(int(y2), 2796))
+                self.controller.swipe(x, y, x2, y2)
 
             elif action == "type":
-                self.controller.type_text(decision.get("text", ""))
+                text = decision.get("text", "")
+                if text:
+                    self.controller.type_text(text)
+                else:
+                    print_color("[!] AI gave type with no text — skipping", "yellow")
 
             elif action == "home":
                 self.controller.press_home()
@@ -108,7 +127,7 @@ class iOSAgent:
         return False
 
     def _save_knowledge(self, app_name, task, history):
-        """Save task history as knowledge for future runs."""
+        """Save task history as knowledge for future runs (deduplicated by task)."""
         fname = self.knowledge_dir / f"{app_name.lower().replace(' ', '_')}.json"
         existing = []
         if fname.exists():
@@ -117,6 +136,13 @@ class iOSAgent:
             except Exception:
                 pass
 
-        existing.append({"task": task, "steps": history})
+        # Deduplicate: replace existing entry for same task, append if new
+        existing = [e for e in existing if e.get("task") != task]
+        existing.append({"task": task, "steps": history, "rounds": len(history)})
+
+        # Keep only last 50 tasks to prevent unbounded growth
+        if len(existing) > 50:
+            existing = existing[-50:]
+
         fname.write_text(json.dumps(existing, indent=2))
         print_color(f"[→] Knowledge saved: {fname}", "blue")

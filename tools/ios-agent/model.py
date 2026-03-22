@@ -114,13 +114,22 @@ def analyze_screenshot(screenshot_path, task, history, config):
 
     raw = resp.json()["content"][0]["text"].strip()
 
-    # Strip markdown fences if present
-    raw = raw.strip("`").strip()
-    if raw.startswith("json"):
-        raw = raw[4:].strip()
+    # Strip markdown fences robustly: ```json ... ``` or ``` ... ```
+    import re
+    raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+    raw = re.sub(r'\s*```\s*$', '', raw, flags=re.MULTILINE)
+    raw = raw.strip()
 
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        print(f"{Fore.YELLOW}[!] Could not parse JSON response: {raw[:200]}{Style.RESET_ALL}")
+        # Retry: extract first {...} block from the response
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+        import sys
+        print(f"{Fore.YELLOW}[!] Could not parse JSON: {raw[:300]}{Style.RESET_ALL}", file=sys.stderr)
         return {"action": "fail", "message": "Could not parse AI response", "done": True}

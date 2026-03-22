@@ -126,6 +126,8 @@ class iOSController:
                 ["python", "-m", "pymobiledevice3", "developer", "screenshot", str(fname)],
                 capture_output=True
             )
+        if not fname.exists():
+            raise RuntimeError(f"Screenshot failed — file not created: {fname}")
         return str(fname)
 
     def tap(self, x, y):
@@ -149,7 +151,7 @@ class iOSController:
 
     def press_home(self):
         if self.driver:
-            self.driver.press_keycode(0)  # home equivalent
+            self.driver.execute_script("mobile: pressButton", {"name": "home"})
 
     def get_page_source(self):
         if self.driver:

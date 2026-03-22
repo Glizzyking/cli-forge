@@ -176,6 +176,19 @@ async function callClaude({ model, maxTokens, systemText, userText, label = "" }
 
 const PLAN_SYSTEM = `You are a senior CLI architect. Output ONLY valid JSON — no markdown, no explanation.
 
+CRITICAL: Generate COMPREHENSIVE tests. The build loop uses your tests to iterate automatically without human input.
+Every important path MUST have a test. Minimum: 2 tests per command + 1 error test per command + edge cases.
+
+Test coverage requirements:
+- Happy path for EVERY command and subcommand
+- Error path for EVERY required arg (missing arg → exit 1)
+- Edge cases: empty input, special chars, large input, concurrent calls
+- --help flag works on every command
+- Flags: each flag tested independently AND in combination
+- If the tool writes files: verify the file exists after, clean up in teardownSteps
+- If the tool reads files: create the file in setupSteps, verify output, clean up
+- Use "node TOOL_FILE" as the placeholder for the script path
+
 Schema:
 {
   "name": "slug-name",
@@ -194,11 +207,21 @@ Schema:
   "testCases": [
     {
       "id": "test_001",
-      "description": "...",
+      "description": "happy path: <command> with valid input",
       "command": "node TOOL_FILE <args>",
       "expectExitCode": 0,
-      "expectOutputContains": ["..."],
-      "expectOutputNotContains": ["..."],
+      "expectOutputContains": ["expected string in stdout or stderr"],
+      "expectOutputNotContains": ["error", "Error"],
+      "setupSteps": ["node -e \"require('fs').writeFileSync('/tmp/test-input.txt','hello')\""],
+      "teardownSteps": ["node -e \"try{require('fs').unlinkSync('/tmp/test-input.txt')}catch(_){}\""  ]
+    },
+    {
+      "id": "test_002",
+      "description": "error path: missing required arg → exit 1",
+      "command": "node TOOL_FILE",
+      "expectExitCode": 1,
+      "expectOutputContains": ["Usage"],
+      "expectOutputNotContains": [],
       "setupSteps": [],
       "teardownSteps": []
     }
@@ -236,8 +259,12 @@ Rules:
 - Use process.argv for argument parsing (no commander, no yargs)
 - process.exit(0) on success, process.exit(1) on error
 - Write helpful error messages to stderr, results to stdout
-- Handle --help on every command
-- Validate all inputs, handle missing files, bad flags, etc.`;
+- Handle --help on every command (print usage + all flags, then exit 0)
+- Validate all inputs upfront — print "Usage: ..." to stderr and exit(1) for missing required args
+- All file paths: use path.resolve() so tests can use absolute paths
+- Wrap main logic in try/catch — never let unhandled exceptions crash without a clean error message
+- Make output predictable and testable: key strings in output must be consistent (not random)
+- Print at least one identifiable success string to stdout/stderr on each successful operation`;
 
 async function buildTool(plan, model, previousCode = null, failingSummary = null) {
   banner(previousCode ? "FIXING — Iterating on failures" : "STEP 2 — Building CLI");
@@ -328,7 +355,9 @@ function runTests(plan, toolFile) {
     }
 
     const rawCmd = tc.command.replace(/TOOL_FILE/g, toolFile);
-    const parts  = rawCmd.split(/\s+/);
+    // Parse quoted args correctly: handles "arg with spaces" and 'single quotes'
+    const parts  = rawCmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)
+                         .map(p => p.replace(/^["']|["']$/g, ""));
     const result = spawnSync(parts[0], parts.slice(1), {
       encoding: "utf8", timeout: 15000, env: { ...process.env },
     });
@@ -418,9 +447,8 @@ async function main() {
     log("info", `File:    ${args.enhance}`);
     log("info", `Request: ${args.description}`);
 
-    const code        = await enhanceTool(args.enhance, args.description, buildModel);
-    const syntaxErr   = syntaxCheck;
-    const tmpFile     = args.enhance + ".forge-tmp.js";
+    const code    = await enhanceTool(args.enhance, args.description, buildModel);
+    const tmpFile = args.enhance + ".forge-tmp.js";
     fs.writeFileSync(tmpFile, code, "utf8");
     const err = syntaxCheck(tmpFile);
     fs.unlinkSync(tmpFile);
